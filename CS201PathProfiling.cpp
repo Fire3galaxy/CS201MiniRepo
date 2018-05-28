@@ -907,7 +907,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
             // "r=Inc(e)" or "r=0"
             if (r_eq_path_instrumentation.find(e) != r_eq_path_instrumentation.end()) {
               Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), (int) r_eq_path_instrumentation[e]), zeroAddr);
-              IRB.CreateStore(addAddr, addAddr);
+              IRB.CreateStore(addAddr, rAddr);
             }
 
             // "count[Inc(e)]++" or "count[r+Inc(e)]++" or "count[r]++"
@@ -928,15 +928,11 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
               IRB.CreateStore(addAddr, pathCntVar);
             }
 
-            //// Get successor index into Value*
-            //const char* blockName = sit->getName().str().c_str();
-            //int64_t blockIdx = std::atoi(blockName + 7); // ignore "bb_edge"
-            //Value* srcAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), blockIdx), zeroAddr);
-
-
-            //// Access array and increment count
-            //Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), zeroAddr);
-            //IRB.CreateStore(addAddr, edgePtr);
+            // "r+=Inc(c)"
+            if (r_plus_eq_path_instrumentation.find(e) != r_plus_eq_path_instrumentation.end()) {
+              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), (int) r_plus_eq_path_instrumentation[e]), rAddr);
+              IRB.CreateStore(addAddr, rAddr);
+            }
           }
         } 
       }
