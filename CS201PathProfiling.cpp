@@ -1,5 +1,7 @@
 /*
- * Authors: Name(s) <email(s)>
+ * Authors: 
+ * Claudia Andrade (candr006@ucr.edu)
+ * Daniel Handojo (dhand002@ucr.edu)
  * 
  */
 
@@ -59,7 +61,10 @@ namespace {
     GlobalVariable *edgeFormatStr2 = NULL;
     GlobalVariable *zeroVar = NULL;
 
-//Global variables these should be cleared after function run
+    // Path profiling variables
+    Module *module;
+
+    //Global variables these should be cleared after function run
     std::vector<std::set<BasicBlock *> > loop_vector;
     std::vector<bool> is_innermost;
     int num_not_visited=0;
@@ -151,7 +156,7 @@ namespace {
           bbname_int++;
       }
 
-      DominatorTreeWrapperPass::runOnFunction(F);
+      DominatorTreeWrapperPass::runOnFunction(F); // Custom use of DominatorTreeFunctionPass
 
       errs() << "Function: " << F.getName() << '\n';
 
@@ -162,6 +167,9 @@ namespace {
         }
         runOnBasicBlock(BB);
       }
+
+      // ----------Our code is below------------
+      int maxPaths = 0; // Path profiling variable. Is filled after identifying loops
 
       //check all loops in loop vector to identify innermost loop
       for(int i=0; i<loop_vector.size(); i++){
@@ -185,13 +193,16 @@ namespace {
       }
       }
 
+    errs() << "Number of loops: " << is_innermost.size() << '\n';
 
       //all loops with an is_innermost value of true at this point are innermost loops
     if(loop_vector.size()<1){
       errs() <<  "Innermost Loop: {}"<< '\n' << "Edge values: {}" << '\n';
     }
+
 std::set<BasicBlock *> innermost_loop;
-for(int i; i < is_innermost.size(); i++ ){
+for(int i = 0; i < is_innermost.size(); i++ ){
+  errs() << "Loop head " << i << ": " << loop_head_tail[i].first->getName() << '\n';
     if(is_innermost[i]){
       innermost_loop=loop_vector[i];
       innermost_loop_head=std::get<0>(loop_head_tail[i]);
@@ -255,49 +266,53 @@ for(int i; i < is_innermost.size(); i++ ){
       int num_loop_exits=0;
       std::map<BasicBlock*, int> loop_exit_edges;
       for(int i=0; i<reversed_results.size(); i++){
-        int num_successors=0;
-        succ_iterator end=succ_end(reversed_results[i]);
-      for (succ_iterator sit = succ_begin(reversed_results[i]);sit != end; ++sit){
-        if(innermost_loop.find(*sit)!=innermost_loop.end()){
-            if ((*sit)!=innermost_loop_head){
-              num_successors++;
-            }
-          }
-      }
-
-      
-      std::string v_name=((reversed_results[i])->getName()).str();
-      //keep a count of how many loop exits there are per vertex
-      
-      if(num_successors<1){
-        num_paths[v_name]=1;
-      }else{
-        num_paths[v_name]=0;
-        succ_iterator end=succ_end(reversed_results[i]);
-        int edge_val= 0;
+          int num_successors=0;
+          succ_iterator end=succ_end(reversed_results[i]);
         for (succ_iterator sit = succ_begin(reversed_results[i]);sit != end; ++sit){
           if(innermost_loop.find(*sit)!=innermost_loop.end()){
-            std::string w_name=(sit->getName()).str();
-            errs() << "Node: " << v_name << " Successor: " << w_name << '\n';
               if ((*sit)!=innermost_loop_head){
-              	std::string edge_name=v_name+" -> "+w_name;
-                edge_val=num_paths[v_name];
-                ball_larus_edge_values[edge_name]=edge_val;
-                num_paths[v_name]=(num_paths[v_name]+num_paths[w_name]);
+                num_successors++;
               }
-            }else{
-            	num_loop_exits++;
-            	//create a set of loop exit edges
-            	if(loop_exit_edges.find(reversed_results[i])!=loop_exit_edges.end()){
-            		loop_exit_edges[reversed_results[i]]++;
-            	}else{
-            		loop_exit_edges[reversed_results[i]]=1;
-            	}
-
             }
         }
+
+        
+        std::string v_name=((reversed_results[i])->getName()).str();
+        //keep a count of how many loop exits there are per vertex
+        
+        if(num_successors<1){
+          num_paths[v_name]=1;
+        }else{
+          num_paths[v_name]=0;
+          succ_iterator end=succ_end(reversed_results[i]);
+          int edge_val= 0;
+          for (succ_iterator sit = succ_begin(reversed_results[i]);sit != end; ++sit){
+            if(innermost_loop.find(*sit)!=innermost_loop.end()){
+              std::string w_name=(sit->getName()).str();
+              errs() << "Node: " << v_name << " Successor: " << w_name << '\n';
+                if ((*sit)!=innermost_loop_head){
+              	  std::string edge_name=v_name+" -> "+w_name;
+                  edge_val=num_paths[v_name];
+                  ball_larus_edge_values[edge_name]=edge_val;
+                  num_paths[v_name]=(num_paths[v_name]+num_paths[w_name]);
+                }
+              }else{
+            	  num_loop_exits++;
+            	  //create a set of loop exit edges
+            	  if(loop_exit_edges.find(reversed_results[i])!=loop_exit_edges.end()){
+            		  loop_exit_edges[reversed_results[i]]++;
+            	  }else{
+            		  loop_exit_edges[reversed_results[i]]=1;
+            	  }
+
+              }
+          }
+        }
       }
-      }
+    if (maxPaths < num_paths[innermost_loop_head->getName().str()]) {
+      maxPaths = num_paths[innermost_loop_head->getName().str()];
+    }
+
 
 	std::reverse(sorted_results2.begin(),sorted_results2.end());
 	errs() << printBBVector(sorted_results2,"Topological Sort") << '\n';
@@ -514,18 +529,20 @@ for(int i; i < is_innermost.size(); i++ ){
   }
 
 
-    //clear global variables, each function will populate these
-    is_innermost.clear();
-    loop_vector.clear();
-    basic_block_key_map.clear();
-    r_eq_path_instrumentation.clear();
-    count_path_instrumentation.clear();
-    r_plus_eq_path_instrumentation.clear();
+      //clear global variables, each function will populate these
+      is_innermost.clear();
+      loop_vector.clear();
+      basic_block_key_map.clear();
+      r_eq_path_instrumentation.clear();
+      count_path_instrumentation.clear();
+      r_plus_eq_path_instrumentation.clear();
 
-       // Add edge profiling code to CFG. (Adds a ton of extra basicBlocks, so I want to do this after
+      errs() << "max path for function: " << maxPaths << '\n';
+      // Add edge profiling code to CFG. (Adds a ton of extra basicBlocks, so I want to do this after
       // path profiling).
       insertAllEdgeNodes(F);
       insertEdgeInstrumentation(F);
+      insertPathInstrumentation(F, maxPaths);
 
       // add printf calls for Edge Profile instrumentation
       addEdgeProfilePrints(F, Context, F.size(), printf_func);
@@ -848,6 +865,42 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
             // Access array and increment count
             Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), loadAddr);
             IRB.CreateStore(addAddr, edgePtr);
+          }
+        } 
+      }
+    }
+
+    void insertPathInstrumentation(Function &F, int maxPaths) {
+      // Create "local" array in the stack (llvm.org/docs/tutorial/ocamllangimpl7.html)
+      IRBuilder<> pathIRB(F.getEntryBlock().begin());
+      llvm::ArrayType* pathCntArrayType = llvm::ArrayType::get(llvm::IntegerType::get(*Context, 32), maxPaths);
+      AllocaInst *pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
+          ConstantInt::get(Type::getInt32Ty(*Context), maxPaths), "path_cnt_array");
+
+      for (auto &BB : F) {
+        std::string bbname = BB.getName().str();
+
+        // Only look at non-edge nodes
+        if (bbname.size() < 7 || bbname.substr(0,7) != "bb_edge") {
+          // Iterate through connected edge nodes (always children of regular nodes)
+          // Inserts instrumentation node for each edge
+          succ_iterator end = succ_end(&BB);
+          for (succ_iterator sit = succ_begin(&BB);sit != end; ++sit) {
+            //IRBuilder<> IRB(sit->begin());
+            //Value* loadAddr = IRB.CreateLoad(zeroVar);
+
+            //// Get successor index into Value*
+            //const char* blockName = sit->getName().str().c_str();
+            //int64_t blockIdx = std::atoi(blockName + 7); // ignore "bb_edge"
+            //Value* srcAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), blockIdx), loadAddr);
+
+            //// Get array elem ptr edge count into Value*
+            //Value *edgePtr = getEdgeFreqPtr(IRB, blockIdx);
+            //loadAddr = IRB.CreateLoad(edgePtr);
+
+            //// Access array and increment count
+            //Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), loadAddr);
+            //IRB.CreateStore(addAddr, edgePtr);
           }
         } 
       }
