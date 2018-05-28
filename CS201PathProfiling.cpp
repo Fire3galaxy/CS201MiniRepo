@@ -117,15 +117,15 @@ namespace {
       // Path Profiling Setup
       // path str 1 and 2
       // FIXME: Change these for path profiling, then try to get output in addPathProfilePrints
-      const char *edgeStr1 = "EDGE PROFILING:\n";
-      format_const = ConstantDataArray::getString(*Context, edgeStr1);
-      edgeFormatStr1 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
-          strlen(edgeStr1)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr1");
+      //const char *edgeStr1 = "EDGE PROFILING:\n";
+      //format_const = ConstantDataArray::getString(*Context, edgeStr1);
+      //edgeFormatStr1 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
+      //    strlen(edgeStr1)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr1");
 
-      const char *edgeStr2 = "b%d -> b%d: %d\n";
-      format_const = ConstantDataArray::getString(*Context, edgeStr2);
-      edgeFormatStr2 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
-          strlen(edgeStr2)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr2");
+      //const char *edgeStr2 = "b%d -> b%d: %d\n";
+      //format_const = ConstantDataArray::getString(*Context, edgeStr2);
+      //edgeFormatStr2 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
+      //    strlen(edgeStr2)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr2");
 
       // order stays the same because the for loop stays the same. Then just make an array for the largest edge 
       // count. 
