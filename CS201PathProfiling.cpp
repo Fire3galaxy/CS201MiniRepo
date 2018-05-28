@@ -62,7 +62,7 @@ namespace {
     GlobalVariable *zeroVar = NULL;
 
     // Path profiling variables
-    Module *module;
+    GlobalVariable *rVar = NULL;
 
     //Global variables these should be cleared after function run
     std::vector<std::set<BasicBlock *> > loop_vector;
@@ -130,9 +130,11 @@ namespace {
           false, llvm::GlobalValue::PrivateLinkage, ConstantArray::get(edgeArrayType, 
           ConstantInt::get(Type::getInt32Ty(*Context), 0)), "edge_cnt_array");
 
-      // bb src, dst, and zero
+      // zero var and r (same value for now)
       zeroVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::InternalLinkage, 
           ConstantInt::get(Type::getInt32Ty(*Context), 0), "zeroVar");
+      rVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::InternalLinkage, 
+          ConstantInt::get(Type::getInt32Ty(*Context), 0), "rVar");
 
       errs() << "Module: " << M.getName() << "\n";
  
@@ -840,6 +842,16 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       return IRB.CreateGEP(edge_cnt_array, ArrayRef<Value*>(idxList, 2));
     }
 
+    Value* getArrayPtr(IRBuilder<> IRB, Value *ptr, Value *index) {
+      // The first 0 index is required because (if I recall) LLVM makes even the variable 
+      // access an "array" access, so we need to access the array, then the array element
+      Value* idxList[2] = {
+        ConstantInt::get(Type::getInt32Ty(*Context), 0), 
+        index
+      };
+      return IRB.CreateGEP(ptr, ArrayRef<Value*>(idxList, 2));
+    }
+
     void insertEdgeInstrumentation(Function &F) {
       for (auto &BB : F) {
         std::string bbname = BB.getName().str();
@@ -886,20 +898,44 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
           // Inserts instrumentation node for each edge
           succ_iterator end = succ_end(&BB);
           for (succ_iterator sit = succ_begin(&BB);sit != end; ++sit) {
-            //IRBuilder<> IRB(sit->begin());
-            //Value* loadAddr = IRB.CreateLoad(zeroVar);
+            IRBuilder<> IRB(sit->begin());
+            Value* zeroAddr = IRB.CreateLoad(zeroVar);  
+            Value* rAddr = IRB.CreateLoad(rVar);
+
+            auto e = MaximumSpanningTree<BasicBlock>::Edge(&BB, *sit);
+
+            // "r=Inc(e)" or "r=0"
+            if (r_eq_path_instrumentation.find(e) != r_eq_path_instrumentation.end()) {
+              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), (int) r_eq_path_instrumentation[e]), zeroAddr);
+              IRB.CreateStore(addAddr, addAddr);
+            }
+
+            // "count[Inc(e)]++" or "count[r+Inc(e)]++" or "count[r]++"
+            if (count_path_instrumentation.find(e) != count_path_instrumentation.end()) {
+              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), count_path_instrumentation[e].increment), zeroAddr);
+
+              if (count_path_instrumentation[e].includeR) {
+                addAddr = IRB.CreateAdd(addAddr, rAddr);
+              }
+
+              // is this incorrect code (using alloca instr as ptr to array)? Unsure about this
+              Value *pathCntPtr = getArrayPtr(IRB, pathCntMem, addAddr);
+              Value *pathCntVar = IRB.CreateLoad(pathCntMem);  
+
+              // increment count[~]
+              addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), pathCntVar);
+
+              IRB.CreateStore(addAddr, pathCntVar);
+            }
 
             //// Get successor index into Value*
             //const char* blockName = sit->getName().str().c_str();
             //int64_t blockIdx = std::atoi(blockName + 7); // ignore "bb_edge"
-            //Value* srcAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), blockIdx), loadAddr);
+            //Value* srcAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), blockIdx), zeroAddr);
 
-            //// Get array elem ptr edge count into Value*
-            //Value *edgePtr = getEdgeFreqPtr(IRB, blockIdx);
-            //loadAddr = IRB.CreateLoad(edgePtr);
 
             //// Access array and increment count
-            //Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), loadAddr);
+            //Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), zeroAddr);
             //IRB.CreateStore(addAddr, edgePtr);
           }
         } 
