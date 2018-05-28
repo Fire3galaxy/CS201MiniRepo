@@ -47,9 +47,17 @@ namespace {
   		MemCountContainer(int i, bool b) : increment(i), includeR(b) {}
   	};
 
-  static char ID;
-  //CS201PathProfiling() : FunctionPass(ID) {}
-  LLVMContext *Context;
+  	struct LoopDetails {
+      AllocaInst *pathCntMem; // Pointer to count array
+      BasicBlock *loop_head;  // Entry/head node of loop
+  	  int numPaths;           // Number of paths from head to tail
+  	  LoopDetails() : pathCntMem(NULL), loop_head(NULL), numPaths(0) {}
+  	  // No constructor for allocaInst (this is set after processing function)
+  	  LoopDetails(BasicBlock* b, int n) : pathCntMem(NULL), loop_head(b), numPaths(n) {}
+  	};
+
+    static char ID;
+    LLVMContext *Context;
 
     GlobalVariable *bbCounter = NULL;
     GlobalVariable *BasicBlockPrintfFormatStr = NULL;
@@ -63,6 +71,8 @@ namespace {
 
     // Path profiling variables
     GlobalVariable *rVar = NULL;
+    AllocaInst *pathCntMem = NULL;
+    std::vector<LoopDetails> loopDetails; // clear after function
 
     //Global variables these should be cleared after function run
     std::vector<std::set<BasicBlock *> > loop_vector;
@@ -92,7 +102,7 @@ namespace {
       BasicBlockPrintfFormatStr = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
           strlen(finalPrintString)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "BasicBlockPrintfFormatStr");
       printf_func = printf_prototype(*Context, &M);
-       // Edge Profiling Setup
+      // Edge Profiling Setup
       // edge str 1 and 2
       const char *edgeStr1 = "EDGE PROFILING:\n";
       format_const = ConstantDataArray::getString(*Context, edgeStr1);
@@ -104,8 +114,19 @@ namespace {
       edgeFormatStr2 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
           strlen(edgeStr2)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr2");
 
-      // edge_cnt_array size: Need a global int array to profile edges. Gonna just make 1 array for all functions.
-      // Next time: Traverse the edges in the order that you traverse the blocks for each function. That way, the
+      // Path Profiling Setup
+      // path str 1 and 2
+      // FIXME: Change these for path profiling, then try to get output in addPathProfilePrints
+      const char *edgeStr1 = "EDGE PROFILING:\n";
+      format_const = ConstantDataArray::getString(*Context, edgeStr1);
+      edgeFormatStr1 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
+          strlen(edgeStr1)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr1");
+
+      const char *edgeStr2 = "b%d -> b%d: %d\n";
+      format_const = ConstantDataArray::getString(*Context, edgeStr2);
+      edgeFormatStr2 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
+          strlen(edgeStr2)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr2");
+
       // order stays the same because the for loop stays the same. Then just make an array for the largest edge 
       // count. 
       int bb_tmp = 0;
@@ -306,15 +327,17 @@ for(int i = 0; i < is_innermost.size(); i++ ){
             	  }else{
             		  loop_exit_edges[reversed_results[i]]=1;
             	  }
-
               }
           }
         }
       }
-    if (maxPaths < num_paths[innermost_loop_head->getName().str()]) {
-      maxPaths = num_paths[innermost_loop_head->getName().str()];
-    }
 
+      // Path profiling details
+      loopDetails.push_back(LoopDetails(innermost_loop_head, 
+          num_paths[innermost_loop_head->getName().str()]));
+      if (maxPaths < num_paths[innermost_loop_head->getName().str()]) {
+        maxPaths = num_paths[innermost_loop_head->getName().str()];
+      }
 
 	std::reverse(sorted_results2.begin(),sorted_results2.end());
 	errs() << printBBVector(sorted_results2,"Topological Sort") << '\n';
@@ -530,16 +553,6 @@ for(int i = 0; i < is_innermost.size(); i++ ){
     }
   }
 
-
-      //clear global variables, each function will populate these
-      is_innermost.clear();
-      loop_vector.clear();
-      basic_block_key_map.clear();
-      r_eq_path_instrumentation.clear();
-      count_path_instrumentation.clear();
-      r_plus_eq_path_instrumentation.clear();
-
-      errs() << "max path for function: " << maxPaths << '\n';
       // Add edge profiling code to CFG. (Adds a ton of extra basicBlocks, so I want to do this after
       // path profiling).
       insertAllEdgeNodes(F);
@@ -547,7 +560,17 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       insertPathInstrumentation(F, maxPaths);
 
       // add printf calls for Edge Profile instrumentation
-      addEdgeProfilePrints(F, Context, F.size(), printf_func);
+      addEdgeProfilePrints(F, printf_func);
+      addPathProfilePrints(F, printf_func);
+
+      //clear global variables, each function will populate these
+      is_innermost.clear();
+      loop_vector.clear();
+      basic_block_key_map.clear();
+      loopDetails.clear();
+      r_eq_path_instrumentation.clear();
+      count_path_instrumentation.clear();
+      r_plus_eq_path_instrumentation.clear();
 
       return true; 
 }
@@ -775,7 +798,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       call->setTailCall(false);
     }
 
-    void addEdgeProfilePrints(Function& F, LLVMContext *Context, int numBlocks, Function *printf_func) {
+    void addEdgeProfilePrints(Function& F, Function *printf_func) {
       // Don't run for functions with no edges
       if (F.size() <= 1)
         return;
@@ -885,8 +908,9 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
     void insertPathInstrumentation(Function &F, int maxPaths) {
       // Create "local" array in the stack (llvm.org/docs/tutorial/ocamllangimpl7.html)
       IRBuilder<> pathIRB(F.getEntryBlock().begin());
-      llvm::ArrayType* pathCntArrayType = llvm::ArrayType::get(llvm::IntegerType::get(*Context, 32), maxPaths);
-      AllocaInst *pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
+      llvm::ArrayType* pathCntArrayType = llvm::ArrayType::get(
+          llvm::IntegerType::get(*Context, 32), maxPaths);
+      pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
           ConstantInt::get(Type::getInt32Ty(*Context), maxPaths), "path_cnt_array");
 
       for (auto &BB : F) {
@@ -981,6 +1005,30 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       	    }
       	  }
       	}
+      }
+    }
+
+    void addPathProfilePrints(Function &F, Function *printf_func) {
+      // Get exit block for function F (need for IRBuilder hack)
+      BasicBlock* exitBlock = NULL;
+      for(auto &B: F) {
+        if(isa<ReturnInst>(B.getTerminator())) { 
+          exitBlock = &B;
+        }
+      }
+
+      // Output first line
+      IRBuilder<> IRB(exitBlock->getTerminator()); // Insert BEFORE the final statement
+      addFinalPrintf0(*exitBlock, Context, edgeFormatStr1, printf_func);
+
+      for (auto &loop : loopDetails) {
+        for (int i = 0; i < loop.numPaths; i++) {
+          errs() << "Path_" << loop.loop_head->getTerminator()->getSuccessor(0)->getName() 
+              << "_" << i << '\n';
+          //// is this incorrect code (using alloca instr as ptr to array)? Unsure about this
+          //Value *pathCntPtr = getArrayPtr(IRB, pathCntMem, addAddr);
+          //Value *pathCntVar = IRB.CreateLoad(pathCntMem);  
+        }
       }
     }
   };
