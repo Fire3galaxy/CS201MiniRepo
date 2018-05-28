@@ -49,11 +49,11 @@ namespace {
 
   	struct LoopDetails {
       AllocaInst *pathCntMem; // Pointer to count array
-      BasicBlock *loop_head;  // Entry/head node of loop
+      BasicBlock *loop_header;  // Entry/head node of loop
   	  int numPaths;           // Number of paths from head to tail
-  	  LoopDetails() : pathCntMem(NULL), loop_head(NULL), numPaths(0) {}
+  	  LoopDetails() : pathCntMem(NULL), loop_header(NULL), numPaths(0) {}
   	  // No constructor for allocaInst (this is set after processing function)
-  	  LoopDetails(BasicBlock* b, int n) : pathCntMem(NULL), loop_head(b), numPaths(n) {}
+  	  LoopDetails(BasicBlock* b, int n) : pathCntMem(NULL), loop_header(b), numPaths(n) {}
   	};
 
     static char ID;
@@ -71,7 +71,8 @@ namespace {
 
     // Path profiling variables
     GlobalVariable *rVar = NULL;
-    AllocaInst *pathCntMem = NULL;
+    GlobalVariable *pathFormatStr1 = NULL;
+    GlobalVariable *pathFormatStr2 = NULL;
     std::vector<LoopDetails> loopDetails; // clear after function
 
     //Global variables these should be cleared after function run
@@ -81,8 +82,8 @@ namespace {
     std::map<std::string, int> basic_block_key_map;
     std::map<std::string, int> num_paths;
     std::map<std::string, int> ball_larus_edge_values;
-    std::vector<std::pair<BasicBlock*, BasicBlock*> > loop_head_tail;
-    BasicBlock* innermost_loop_head;
+    std::vector<std::pair<BasicBlock*, BasicBlock*> > loop_header_tail;
+    BasicBlock* innermost_loop_header;
     BasicBlock* innermost_loop_tail;
     MaximumSpanningTree<BasicBlock>::EdgeWeights ew_vector;
     std::map<MaximumSpanningTree<BasicBlock>::Edge, double> r_eq_path_instrumentation;
@@ -116,16 +117,15 @@ namespace {
 
       // Path Profiling Setup
       // path str 1 and 2
-      // FIXME: Change these for path profiling, then try to get output in addPathProfilePrints
-      //const char *edgeStr1 = "EDGE PROFILING:\n";
-      //format_const = ConstantDataArray::getString(*Context, edgeStr1);
-      //edgeFormatStr1 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
-      //    strlen(edgeStr1)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr1");
+      const char *pathStr1 = "PATH PROFILING:\n";
+      format_const = ConstantDataArray::getString(*Context, pathStr1);
+      pathFormatStr1 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
+          strlen(pathStr1)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "pathFormatStr1");
 
-      //const char *edgeStr2 = "b%d -> b%d: %d\n";
-      //format_const = ConstantDataArray::getString(*Context, edgeStr2);
-      //edgeFormatStr2 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
-      //    strlen(edgeStr2)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "edgeFormatStr2");
+      const char *pathStr2 = "Path_b%d_%d: %d\n";
+      format_const = ConstantDataArray::getString(*Context, pathStr2);
+      pathFormatStr2 = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
+          strlen(pathStr2)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "pathFormatStr2");
 
       // order stays the same because the for loop stays the same. Then just make an array for the largest edge 
       // count. 
@@ -192,8 +192,6 @@ namespace {
       }
 
       // ----------Our code is below------------
-      int maxPaths = 0; // Path profiling variable. Is filled after identifying loops
-
       //check all loops in loop vector to identify innermost loop
       for(int i=0; i<loop_vector.size(); i++){
         if(is_innermost[i]){
@@ -225,11 +223,11 @@ namespace {
 
 std::set<BasicBlock *> innermost_loop;
 for(int i = 0; i < is_innermost.size(); i++ ){
-  errs() << "Loop head " << i << ": " << loop_head_tail[i].first->getName() << '\n';
+  errs() << "Loop head " << i << ": " << loop_header_tail[i].first->getName() << '\n';
     if(is_innermost[i]){
       innermost_loop=loop_vector[i];
-      innermost_loop_head=std::get<0>(loop_head_tail[i]);
-      innermost_loop_tail=std::get<1>(loop_head_tail[i]);
+      innermost_loop_header=std::get<0>(loop_header_tail[i]);
+      innermost_loop_tail=std::get<1>(loop_header_tail[i]);
 
       errs() <<  printLoop(loop_vector[i], "Innermost Loop")<< '\n';
 
@@ -293,7 +291,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
           succ_iterator end=succ_end(reversed_results[i]);
         for (succ_iterator sit = succ_begin(reversed_results[i]);sit != end; ++sit){
           if(innermost_loop.find(*sit)!=innermost_loop.end()){
-              if ((*sit)!=innermost_loop_head){
+              if ((*sit)!=innermost_loop_header){
                 num_successors++;
               }
             }
@@ -313,7 +311,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
             if(innermost_loop.find(*sit)!=innermost_loop.end()){
               std::string w_name=(sit->getName()).str();
               errs() << "Node: " << v_name << " Successor: " << w_name << '\n';
-                if ((*sit)!=innermost_loop_head){
+                if ((*sit)!=innermost_loop_header){
               	  std::string edge_name=v_name+" -> "+w_name;
                   edge_val=num_paths[v_name];
                   ball_larus_edge_values[edge_name]=edge_val;
@@ -333,11 +331,8 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       }
 
       // Path profiling details
-      loopDetails.push_back(LoopDetails(innermost_loop_head, 
-          num_paths[innermost_loop_head->getName().str()]));
-      if (maxPaths < num_paths[innermost_loop_head->getName().str()]) {
-        maxPaths = num_paths[innermost_loop_head->getName().str()];
-      }
+      loopDetails.push_back(LoopDetails(innermost_loop_header, 
+          num_paths[innermost_loop_header->getName().str()]));
 
 	std::reverse(sorted_results2.begin(),sorted_results2.end());
 	errs() << printBBVector(sorted_results2,"Topological Sort") << '\n';
@@ -358,7 +353,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
 		}
 
 		vertex_weight[sorted_results2[i]]=0;
-		if(sorted_results2[i]!=innermost_loop_head){
+		if(sorted_results2[i]!=innermost_loop_header){
 
 			for (pred_iterator pit = pred_begin(sorted_results2[i]);pit != pred_end(sorted_results2[i]); ++pit){
 				if(innermost_loop.find(*pit)!=innermost_loop.end()){
@@ -369,7 +364,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
 				
 			}
 		}else{
-			vertex_weight[innermost_loop_head]=1*loop_mult;
+			vertex_weight[innermost_loop_header]=1*loop_mult;
 		}
 
 		for (succ_iterator sit = succ_begin(sorted_results2[i]);sit != succ_end(sorted_results2[i]); ++sit){
@@ -400,8 +395,8 @@ for(int i = 0; i < is_innermost.size(); i++ ){
 
 // Add back edge to the ew_vector
     std::string v_name=innermost_loop_tail->getName();
-    std::string w_name=innermost_loop_head->getName();
-    MaximumSpanningTree<BasicBlock>::Edge e_be(innermost_loop_tail,innermost_loop_head);
+    std::string w_name=innermost_loop_header->getName();
+    MaximumSpanningTree<BasicBlock>::Edge e_be(innermost_loop_tail,innermost_loop_header);
     //edge weight
     MaximumSpanningTree<BasicBlock>::EdgeWeight ew_be(e_be,1);
     ew_vector.push_back(ew_be);
@@ -445,7 +440,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
     //DFS(0,root,null) goes here
     //NULL not accepted for edge so passing in an empty edge
     MaximumSpanningTree<BasicBlock>::Edge null_edge (NULL,NULL);
-    DFS(0,innermost_loop_head,null_edge, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_head);
+    DFS(0,innermost_loop_header,null_edge, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_header);
 
     //next loop through chords goes here
     for(std::set<MaximumSpanningTree<BasicBlock>::Edge>::iterator it=chords.begin(); it!=chords.end(); ++it){
@@ -468,7 +463,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       else if e is the only incoming edge of w WS.add(w); 
       else instrumentte, 'r=O'); */
     std::stack<BasicBlock *> ws;
-    ws.push(innermost_loop_head);
+    ws.push(innermost_loop_header);
 
     while(!ws.empty()){
       BasicBlock * v= ws.top();
@@ -557,7 +552,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       // path profiling).
       insertAllEdgeNodes(F);
       insertEdgeInstrumentation(F);
-      insertPathInstrumentation(F, maxPaths);
+      insertPathInstrumentation(F);
 
       // add printf calls for Edge Profile instrumentation
       addEdgeProfilePrints(F, printf_func);
@@ -595,7 +590,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       }*/
       //if this is not a back edge, then visit
       int j= basic_block_key_map[sit->getName().str()];
-      if (loop[j]!=innermost_loop_head){
+      if (loop[j]!=innermost_loop_header){
         visitBlock(j, visited, mark_type, loop, sorted_results2); 
       }
 
@@ -609,7 +604,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
 
 void DFS(int events, BasicBlock* v, MaximumSpanningTree<BasicBlock>::Edge e, std::set<BasicBlock*> innermost_loop, 
 	std::set<MaximumSpanningTree<BasicBlock>::Edge> chords, std::map<MaximumSpanningTree<BasicBlock>::Edge,int> &increment,
-	BasicBlock* innermost_loop_tail, BasicBlock* innermost_loop_head){
+	BasicBlock* innermost_loop_tail, BasicBlock* innermost_loop_header){
 
 //if(debug_dfs<50){
   for(pred_iterator pit =pred_begin(v); pit!=pred_end(v); ++pit){
@@ -624,14 +619,14 @@ void DFS(int events, BasicBlock* v, MaximumSpanningTree<BasicBlock>::Edge e, std
 	        }
 	        debug_dfs++;
 	        //errs() << "Dir+Events: "<<(Dir(e,f)*events)+Events << " pred: " <<(*pit)->getName() << " f.first: " << f.first->getName() << " f.second " << f.second->getName()<< '\n';
-	        DFS((Dir(e,f)*events)+Events,(*pit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_head);
+	        DFS((Dir(e,f)*events)+Events,(*pit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_header);
   		}
 	   }
   }
 
   for(succ_iterator sit =succ_begin(v); sit!=succ_end(v); ++sit){
       MaximumSpanningTree<BasicBlock>::Edge f(v,*sit);
-      if((innermost_loop.find(*sit)!=innermost_loop.end()) && (f!=e) && ((*sit)!=innermost_loop_head) && (chords.find(f)==chords.end())){
+      if((innermost_loop.find(*sit)!=innermost_loop.end()) && (f!=e) && ((*sit)!=innermost_loop_header) && (chords.find(f)==chords.end())){
       	//errs() << "first if statement" << '\n';
         int Events=0;
         for(int i=0; i<ew_vector.size(); i++){
@@ -644,7 +639,7 @@ void DFS(int events, BasicBlock* v, MaximumSpanningTree<BasicBlock>::Edge e, std
         debug_dfs++;
       // errs() << "Dir+Events: "<<(Dir(e,f)*events)+Events << " succ: " <<(*sit)->getName() << " f.first: " << f.first->getName() << " f.second " << f.second->getName()<< '\n';
 
-        DFS((Dir(e,f)*events)+Events,(*sit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_head);
+        DFS((Dir(e,f)*events)+Events,(*sit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_header);
       }
   }
 
@@ -719,7 +714,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
             BasicBlock * head=(*sit);
             BasicBlock * tail= &BB;
           std::pair <BasicBlock*, BasicBlock*> head_tail (head,tail);           
-          loop_head_tail.push_back(head_tail);
+          loop_header_tail.push_back(head_tail);
         }
 
 
@@ -905,13 +900,22 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       }
     }
 
-    void insertPathInstrumentation(Function &F, int maxPaths) {
+    void insertPathInstrumentation(Function &F) {
+      for (auto &loop : loopDetails) {
+        insertLoopPathInstrumentation(F, loop);
+      }
+    }
+
+    void insertLoopPathInstrumentation(Function &F, LoopDetails &loop) {
       // Create "local" array in the stack (llvm.org/docs/tutorial/ocamllangimpl7.html)
       IRBuilder<> pathIRB(F.getEntryBlock().begin());
       llvm::ArrayType* pathCntArrayType = llvm::ArrayType::get(
-          llvm::IntegerType::get(*Context, 32), maxPaths);
-      pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
-          ConstantInt::get(Type::getInt32Ty(*Context), maxPaths), "path_cnt_array");
+          llvm::IntegerType::get(*Context, 32), loop.numPaths);
+      // Save it to loop details
+      loop.pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
+          ConstantInt::get(Type::getInt32Ty(*Context), loop.numPaths), "path_cnt_array");
+
+      //setArrayToZeroes(pathIRB, loop.pathCntMem, loop.numPaths); // clear array
 
       for (auto &BB : F) {
         std::string bbname = BB.getName().str();
@@ -924,14 +928,13 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
           for (succ_iterator sit = succ_begin(&BB);sit != end; ++sit) {
             IRBuilder<> IRB(sit->begin());
             Value* zeroAddr = IRB.CreateLoad(zeroVar);  
-            Value* rAddr = IRB.CreateLoad(rVar);
 
             auto e = MaximumSpanningTree<BasicBlock>::Edge(&BB, *sit);
 
             // "r=Inc(e)" or "r=0"
             if (r_eq_path_instrumentation.find(e) != r_eq_path_instrumentation.end()) {
               Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), (int) r_eq_path_instrumentation[e]), zeroAddr);
-              IRB.CreateStore(addAddr, rAddr);
+              IRB.CreateStore(addAddr, rVar);
             }
 
             // "count[Inc(e)]++" or "count[r+Inc(e)]++" or "count[r]++"
@@ -939,26 +942,45 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
               Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), count_path_instrumentation[e].increment), zeroAddr);
 
               if (count_path_instrumentation[e].includeR) {
+                Value* rAddr = IRB.CreateLoad(rVar);
                 addAddr = IRB.CreateAdd(addAddr, rAddr);
               }
 
               // is this incorrect code (using alloca instr as ptr to array)? Unsure about this
-              Value *pathCntPtr = getArrayPtr(IRB, pathCntMem, addAddr);
-              Value *pathCntVar = IRB.CreateLoad(pathCntMem);  
+              Value *pathCntPtr = getArrayPtr(IRB, loop.pathCntMem, addAddr);
+              Value *pathCntVar = IRB.CreateLoad(pathCntPtr);  
 
-              // increment count[~]
+              // increment count[~] & store back into array
               addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), pathCntVar);
-
-              IRB.CreateStore(addAddr, pathCntVar);
+              IRB.CreateStore(addAddr, pathCntPtr);
             }
 
             // "r+=Inc(c)"
             if (r_plus_eq_path_instrumentation.find(e) != r_plus_eq_path_instrumentation.end()) {
-              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), (int) r_plus_eq_path_instrumentation[e]), rAddr);
-              IRB.CreateStore(addAddr, rAddr);
+              Value* rAddr = IRB.CreateLoad(rVar);
+              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 
+                  (int) r_plus_eq_path_instrumentation[e]), rAddr);
+              IRB.CreateStore(addAddr, rVar);
             }
           }
         } 
+      }
+    }
+
+    void setArrayToZeroes(IRBuilder<> IRB, AllocaInst *array, const int size) {
+      // zero variable to store in array locations
+      Value* zeroAddr = IRB.CreateLoad(zeroVar);  
+
+      // store zero in each array element
+      for (int i = 0; i < size; i++) {
+        // Array index
+        Value* indexVal = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), i), zeroAddr);
+
+        // get array element pointer
+        Value *pathCntPtr = getArrayPtr(IRB, array, indexVal);
+
+        // store zeroVar into pointer
+        IRB.CreateStore(zeroVar, pathCntPtr);
       }
     }
 
@@ -1019,15 +1041,31 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
 
       // Output first line
       IRBuilder<> IRB(exitBlock->getTerminator()); // Insert BEFORE the final statement
-      addFinalPrintf0(*exitBlock, Context, edgeFormatStr1, printf_func);
+      addFinalPrintf0(*exitBlock, Context, pathFormatStr1, printf_func);
 
+      // Output profile for each loop's paths
       for (auto &loop : loopDetails) {
         for (int i = 0; i < loop.numPaths; i++) {
-          errs() << "Path_" << loop.loop_head->getTerminator()->getSuccessor(0)->getName() 
-              << "_" << i << '\n';
-          //// is this incorrect code (using alloca instr as ptr to array)? Unsure about this
-          //Value *pathCntPtr = getArrayPtr(IRB, pathCntMem, addAddr);
-          //Value *pathCntVar = IRB.CreateLoad(pathCntMem);  
+          // Super helpful zero variable
+          Value* zeroAddr = IRB.CreateLoad(zeroVar);  
+
+          // Get loop header's block index
+          const char* blockName = loop.loop_header->getTerminator()
+              ->getSuccessor(0)->getName().str().c_str();
+          int64_t blockIdx = std::atoi(blockName + 1); // ignore 'b'
+          Value* blockIdxVal = IRB.CreateAdd(ConstantInt::get(
+              Type::getInt32Ty(*Context), blockIdx), zeroAddr);
+
+          // Get path index
+          Value* pathIdxVal = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), i), zeroAddr);
+
+          // Get path counter
+          Value *pathCntPtr = getArrayPtr(IRB, loop.pathCntMem, pathIdxVal);
+          Value *pathCntVar = IRB.CreateLoad(pathCntPtr);  
+          errs() << "array name: " << loop.pathCntMem->getName() << '\n';
+
+          addFinalPrintf3(*exitBlock, Context, blockIdxVal, pathIdxVal, 
+              pathCntVar, pathFormatStr2, printf_func);
         }
       }
     }
