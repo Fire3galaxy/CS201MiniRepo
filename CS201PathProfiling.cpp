@@ -39,23 +39,23 @@ namespace {
   }
 
   struct CS201PathProfiling : public DominatorTreeWrapperPass {
-  	// Page 7 of ball-larus algorithm
-  	struct MemCountContainer {
-  		int increment;
-  		bool includeR;
-  		MemCountContainer() : increment(0), includeR(false) {}
-  		MemCountContainer(int i, bool b) : increment(i), includeR(b) {}
-  	};
+    // Page 7 of ball-larus algorithm
+    struct MemCountContainer {
+      int increment;
+      bool includeR;
+      MemCountContainer() : increment(0), includeR(false) {}
+      MemCountContainer(int i, bool b) : increment(i), includeR(b) {}
+    };
 
-  	struct LoopDetails {
-      AllocaInst *pathCntMem;       // Pointer to count array
+    struct LoopDetails {
+      AllocaInst *pathCntMem; // Pointer to count array
       std::set<std::string> loopBlocks;  // blocks in loop
-      BasicBlock *loop_header;      // Entry/head node of loop
-  	  int numPaths;                 // Number of paths from head to tail
-  	  LoopDetails() : pathCntMem(NULL), loop_header(NULL), numPaths(0) {}
-  	  // No constructor for allocaInst (this is set after processing function)
-  	  LoopDetails(BasicBlock* b, int n) : pathCntMem(NULL), loop_header(b), numPaths(n) {}
-  	};
+      BasicBlock *loop_header;  // Entry/head node of loop
+      int numPaths;           // Number of paths from head to tail
+      LoopDetails() : pathCntMem(NULL), loop_header(NULL), numPaths(0) {}
+      // No constructor for allocaInst (this is set after processing function)
+      LoopDetails(BasicBlock* b, int n) : pathCntMem(NULL), loop_header(b), numPaths(n) {}
+    };
 
     static char ID;
     LLVMContext *Context;
@@ -158,7 +158,7 @@ namespace {
       rVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::InternalLinkage, 
           ConstantInt::get(Type::getInt32Ty(*Context), 0), "rVar");
 
-      errs() << "Module: " << M.getName() << "\n";
+      //errs() << "Module: " << M.getName() << "\n";
  
       return true;
     }
@@ -186,17 +186,14 @@ namespace {
 
       for(auto &BB: F) {
         // Add the footer to Main's BB containing the return 0; statement BEFORE calling runOnBasicBlock
-        if(F.getName().equals("main") && isa<ReturnInst>(BB.getTerminator())) { // major hack?
-          addFinalPrintf(BB, Context, bbCounter, BasicBlockPrintfFormatStr, printf_func);
-        }
         runOnBasicBlock(BB);
       }
 
       // ----------Our code is below------------
       //check all loops in loop vector to identify innermost loop
-      for(int i=0; i<loop_vector.size(); i++){
+      for(unsigned int i=0; i<loop_vector.size(); i++){
         if(is_innermost[i]){
-          for(int j=0; j<loop_vector.size(); j++){
+          for(unsigned int j=0; j<loop_vector.size(); j++){
             if(j!=i){
               bool all_contained=true;
               for(auto &m : loop_vector.at(i)){
@@ -215,16 +212,13 @@ namespace {
       }
       }
 
-    errs() << "Number of loops: " << is_innermost.size() << '\n';
-
       //all loops with an is_innermost value of true at this point are innermost loops
     if(loop_vector.size()<1){
       errs() <<  "Innermost Loop: {}"<< '\n' << "Edge values: {}" << '\n';
     }
 
 std::set<BasicBlock *> innermost_loop;
-for(int i = 0; i < is_innermost.size(); i++ ){
-  errs() << "Loop head " << i << ": " << loop_header_tail[i].first->getName() << '\n';
+for(unsigned int i = 0; i < is_innermost.size(); i++ ){
     if(is_innermost[i]){
       innermost_loop=loop_vector[i];
       innermost_loop_header=std::get<0>(loop_header_tail[i]);
@@ -254,13 +248,13 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       
       // initialize visited vector to false
       //initialize mark type vector to empty string
-      for (int i = 0; i < innermost_loop_vector.size(); i++){
+      for(unsigned int i = 0; i < innermost_loop_vector.size(); i++){
           visited.push_back(false);
           mark_type.push_back("");
       }
 
       while(num_not_visited>0){
-        for(int i=0; i<innermost_loop.size(); i++){
+        for(unsigned int i=0; i<innermost_loop.size(); i++){
           if(!visited[i]){
             visitBlock(i, visited, mark_type, innermost_loop_vector, sorted_results2);
           }
@@ -269,7 +263,6 @@ for(int i = 0; i < is_innermost.size(); i++ ){
 
 
       reversed_results=sorted_results2;
-      errs() << printBBVector(sorted_results2,"Reverse Topological Sort") << '\n';
 
 
       //Ball Larus - Assign each path a unique value 
@@ -290,7 +283,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       loopData.loop_header = innermost_loop_header;
       int num_loop_exits=0;
       std::map<BasicBlock*, int> loop_exit_edges;
-      for(int i=0; i<reversed_results.size(); i++){
+      for(unsigned int i=0; i<reversed_results.size(); i++){
           int num_successors=0;
           succ_iterator end=succ_end(reversed_results[i]);
         for (succ_iterator sit = succ_begin(reversed_results[i]);sit != end; ++sit){
@@ -304,7 +297,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
         
         std::string v_name=((reversed_results[i])->getName()).str();
         //keep a count of how many loop exits there are per vertex
-
+        
         if(num_successors<1){
           num_paths[v_name]=1;
         }else{
@@ -314,9 +307,8 @@ for(int i = 0; i < is_innermost.size(); i++ ){
           for (succ_iterator sit = succ_begin(reversed_results[i]);sit != end; ++sit){
             if(innermost_loop.find(*sit)!=innermost_loop.end()){
               std::string w_name=(sit->getName()).str();
-              errs() << "Node: " << v_name << " Successor: " << w_name << '\n';
                 if ((*sit)!=innermost_loop_header){
-              	  std::string edge_name=v_name+" -> "+w_name;
+                  std::string edge_name=v_name+" -> "+w_name;
                   edge_val=num_paths[v_name];
                   ball_larus_edge_values[edge_name]=edge_val;
                   num_paths[v_name]=(num_paths[v_name]+num_paths[w_name]);
@@ -326,77 +318,74 @@ for(int i = 0; i < is_innermost.size(); i++ ){
                   loopData.loopBlocks.insert(w_name);
                 }
               }else{
-            	  num_loop_exits++;
-            	  //create a set of loop exit edges
-            	  if(loop_exit_edges.find(reversed_results[i])!=loop_exit_edges.end()){
-            		  loop_exit_edges[reversed_results[i]]++;
-            	  }else{
-            		  loop_exit_edges[reversed_results[i]]=1;
-            	  }
+                num_loop_exits++;
+                //create a set of loop exit edges
+                if(loop_exit_edges.find(reversed_results[i])!=loop_exit_edges.end()){
+                  loop_exit_edges[reversed_results[i]]++;
+                }else{
+                  loop_exit_edges[reversed_results[i]]=1;
+                }
               }
           }
         }
       }
 
-      // Path profiling details
+      // Push path profiling details to vector
       loopData.numPaths = num_paths[innermost_loop_header->getName().str()];
       loopDetails.push_back(loopData);
 
-	std::reverse(sorted_results2.begin(),sorted_results2.end());
-	errs() << printBBVector(sorted_results2,"Topological Sort") << '\n';
-	//Approx. edge frequencies
-	int loop_mult=10;
-	double loop_exit_weight=(1.0/num_loop_exits);
+  std::reverse(sorted_results2.begin(),sorted_results2.end());
+  //Approx. edge frequencies
+  int loop_mult=10;
+  double loop_exit_weight=(1.0/num_loop_exits);
     std::map<BasicBlock*, double> vertex_weight;
-	 std::map<MaximumSpanningTree<BasicBlock>::Edge, double> apprx_edge_weight;
-	//initialize loop head vert weight to 1* loop multiplier
-	
-	for(int i=0; i<sorted_results2.size(); i++){
-		double w_e;
-		if(loop_exit_edges.find(sorted_results2[i])!=loop_exit_edges.end()){
-			w_e=(loop_exit_weight*loop_exit_edges[sorted_results2[i]]);
-		}else{
-			//no exit edges
-			w_e=0;
-		}
+   std::map<MaximumSpanningTree<BasicBlock>::Edge, double> apprx_edge_weight;
+  //initialize loop head vert weight to 1* loop multiplier
+  
+  for(unsigned int i=0; i<sorted_results2.size(); i++){
+    double w_e;
+    if(loop_exit_edges.find(sorted_results2[i])!=loop_exit_edges.end()){
+      w_e=(loop_exit_weight*loop_exit_edges[sorted_results2[i]]);
+    }else{
+      //no exit edges
+      w_e=0;
+    }
 
-		vertex_weight[sorted_results2[i]]=0;
-		if(sorted_results2[i]!=innermost_loop_header){
+    vertex_weight[sorted_results2[i]]=0;
+    if(sorted_results2[i]!=innermost_loop_header){
 
-			for (pred_iterator pit = pred_begin(sorted_results2[i]);pit != pred_end(sorted_results2[i]); ++pit){
-				if(innermost_loop.find(*pit)!=innermost_loop.end()){
-					//basic block is in the loop 
-					MaximumSpanningTree<BasicBlock>::Edge e(*pit,sorted_results2[i]);
-					vertex_weight[sorted_results2[i]]=vertex_weight[sorted_results2[i]]+apprx_edge_weight[e];						
-				}
-				
-			}
-		}else{
-			vertex_weight[innermost_loop_header]=1*loop_mult;
-		}
+      for (pred_iterator pit = pred_begin(sorted_results2[i]);pit != pred_end(sorted_results2[i]); ++pit){
+        if(innermost_loop.find(*pit)!=innermost_loop.end()){
+          //basic block is in the loop 
+          MaximumSpanningTree<BasicBlock>::Edge e(*pit,sorted_results2[i]);
+          vertex_weight[sorted_results2[i]]=vertex_weight[sorted_results2[i]]+apprx_edge_weight[e];           
+        }
+        
+      }
+    }else{
+      vertex_weight[innermost_loop_header]=1*loop_mult;
+    }
 
-		for (succ_iterator sit = succ_begin(sorted_results2[i]);sit != succ_end(sorted_results2[i]); ++sit){
-			double w= vertex_weight[sorted_results2[i]];
-			if(innermost_loop.find(*sit)!=innermost_loop.end()){
-				//basic block is in the loop 
-				MaximumSpanningTree<BasicBlock>::Edge out_edge(sorted_results2[i],*sit);
+    for (succ_iterator sit = succ_begin(sorted_results2[i]);sit != succ_end(sorted_results2[i]); ++sit){
+      double w= vertex_weight[sorted_results2[i]];
+      if(innermost_loop.find(*sit)!=innermost_loop.end()){
+        //basic block is in the loop 
+        MaximumSpanningTree<BasicBlock>::Edge out_edge(sorted_results2[i],*sit);
 
-				double n=sorted_results2[i]->getTerminator()->getNumSuccessors();
-				if(loop_exit_edges.find(sorted_results2[i])!=loop_exit_edges.end()){
-					n=n-loop_exit_edges[sorted_results2[i]];
-				}
-				errs() << "w_e: "<< w_e << '\n';
+        double n=sorted_results2[i]->getTerminator()->getNumSuccessors();
+        if(loop_exit_edges.find(sorted_results2[i])!=loop_exit_edges.end()){
+          n=n-loop_exit_edges[sorted_results2[i]];
+        }
 
-				apprx_edge_weight[out_edge]=(w-w_e)/n;
-			}
-		}
-	}
+        apprx_edge_weight[out_edge]=(w-w_e)/n;
+      }
+    }
+  }
 
 
     for(std::map<MaximumSpanningTree<BasicBlock>::Edge,double>::iterator it=apprx_edge_weight.begin(); it!=apprx_edge_weight.end(); ++it){
 
         MaximumSpanningTree<BasicBlock>::EdgeWeight ew((*it).first,(*it).second);
-        errs() << "Edge Weight: " << it->first.first->getName() << " -> " << it->first.second->getName() <<"= "<< it->second << '\n';
         ew_vector.push_back(ew);
     }
 
@@ -409,29 +398,33 @@ for(int i = 0; i < is_innermost.size(); i++ ){
     MaximumSpanningTree<BasicBlock>::EdgeWeight ew_be(e_be,1);
     ew_vector.push_back(ew_be);
 
+     //Print edge values
+   errs() << "Edge Values: {" << '\n';
+   for (std::map<std::string,int>::iterator it=ball_larus_edge_values.begin(); it!=ball_larus_edge_values.end(); ++it){
+      errs() << " " << it->first << " => " << it->second << '\n';
+
+    }
+    errs() << "}" << '\n';
+
 
       MaximumSpanningTree<BasicBlock> mst (ew_vector);
 
       std::set<MaximumSpanningTree<BasicBlock>::Edge> edge_set;
       for(std::vector<MaximumSpanningTree<BasicBlock>::Edge>::iterator it=mst.begin(); it!=mst.end();++it){
-      	if((*it).first->getName()=="b6" && (*it).second->getName()=="b1"){
-      		errs() << "back edge is in mst" << '\n';
-      	}
           edge_set.insert(*it);
-      	
+        
       }
 
       //now identify the chords
       std::set<MaximumSpanningTree<BasicBlock>::Edge> chords;
       for(MaximumSpanningTree<BasicBlock>::EdgeWeights::iterator it=ew_vector.begin();it!=ew_vector.end();++it){
-      	  MaximumSpanningTree<BasicBlock>::Edge e(it->first);
-      	  std::string edge_name=e.first->getName().str()+" -> "+e.second->getName().str();
-      	  int bev=ball_larus_edge_values[edge_name];
-      	  //Reset edge weight to original ball larus edge vals
-      	  it->second=bev;
+          MaximumSpanningTree<BasicBlock>::Edge e(it->first);
+          std::string edge_name=e.first->getName().str()+" -> "+e.second->getName().str();
+          int bev=ball_larus_edge_values[edge_name];
+          //Reset edge weight to original ball larus edge vals
+          it->second=bev;
 
           if(edge_set.find(it->first)==edge_set.end()){
-          	errs() << "chord: "<< it->first.first->getName() << " -> " << it->first.second->getName() << '\n';
             chords.insert(it->first);
           }
 
@@ -453,7 +446,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
     //next loop through chords goes here
     for(std::set<MaximumSpanningTree<BasicBlock>::Edge>::iterator it=chords.begin(); it!=chords.end(); ++it){
         int Events=0;
-        for(int i=0; i<ew_vector.size(); i++){
+        for(unsigned int i=0; i<ew_vector.size(); i++){
           if(ew_vector[i].first==(*it)){
             Events=ew_vector[i].second;
           }
@@ -477,21 +470,19 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       BasicBlock * v= ws.top();
       ws.pop();
       for (succ_iterator sit = succ_begin(v);sit != succ_end(v); ++sit){
-      	if(innermost_loop.find(*sit)!=innermost_loop.end()){
-	        BasicBlock* w= (*sit);
-	        MaximumSpanningTree<BasicBlock>::Edge e (v,w);
-	        //if e is a chord edge
-	        if(chords.find(e)!=chords.end()){
-	        	r_eq_path_instrumentation[e]=increment[e];
-	        	errs() << "req: " <<e.first->getName() <<" -> "<<e.second->getName() << " " << r_eq_path_instrumentation[e] << '\n';
-	        }
-	        else if(v->getTerminator()->getNumSuccessors()==1){
-	          ws.push(w);
-	        }else{
-	        	r_eq_path_instrumentation[e]=0;
-	        	errs() << "req: "<<e.first->getName() <<" -> "<<e.second->getName() << " "  << r_eq_path_instrumentation[e] << '\n';
-	        }
-	    }
+        if(innermost_loop.find(*sit)!=innermost_loop.end()){
+          BasicBlock* w= (*sit);
+          MaximumSpanningTree<BasicBlock>::Edge e (v,w);
+          //if e is a chord edge
+          if(chords.find(e)!=chords.end()){
+            r_eq_path_instrumentation[e]=increment[e];
+          }
+          else if(v->getTerminator()->getNumSuccessors()==1){
+            ws.push(w);
+          }else{
+            r_eq_path_instrumentation[e]=0;
+          }
+      }
       }
     }
 
@@ -503,26 +494,23 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       ws.pop();
 
       for (pred_iterator pit = pred_begin(w);pit != pred_end(w); ++pit){
-      	if(innermost_loop.find(*pit)!=innermost_loop.end()){
-	        BasicBlock* v= (*pit);
-	        MaximumSpanningTree<BasicBlock>::Edge e (v,w);
-	        //if e is a chord edge
-	        if(chords.find(e)!=chords.end()){
-	         if(r_eq_path_instrumentation[e]==increment[e]){
-	          	count_path_instrumentation[e]=MemCountContainer(increment[e],false);
-	          	errs() << "count: " <<e.first->getName() <<" -> "<<e.second->getName() << " " << count_path_instrumentation[e].increment << '\n';
-	          }else{
-	      		count_path_instrumentation[e]=MemCountContainer(increment[e],true);
-	      		errs() << "count: " <<e.first->getName() <<" -> "<<e.second->getName() << " " << count_path_instrumentation[e].increment << " " << count_path_instrumentation[e].includeR << '\n';
-	          }
-	        }
-	        else if(v->getTerminator()->getNumSuccessors()==1){
-	          ws.push(v);
-	        }else{
-	          count_path_instrumentation[e]=MemCountContainer(0,true);
-	          errs() << "count: " <<e.first->getName() <<" -> "<<e.second->getName() << " " << count_path_instrumentation[e].includeR << '\n';
-	        }
-	    }
+        if(innermost_loop.find(*pit)!=innermost_loop.end()){
+          BasicBlock* v= (*pit);
+          MaximumSpanningTree<BasicBlock>::Edge e (v,w);
+          //if e is a chord edge
+          if(chords.find(e)!=chords.end()){
+           if(r_eq_path_instrumentation[e]==increment[e]){
+              count_path_instrumentation[e]=MemCountContainer(increment[e],false);
+            }else{
+            count_path_instrumentation[e]=MemCountContainer(increment[e],true);
+            }
+          }
+          else if(v->getTerminator()->getNumSuccessors()==1){
+            ws.push(v);
+          }else{
+            count_path_instrumentation[e]=MemCountContainer(0,true);
+          }
+      }
       }
 
     }
@@ -530,29 +518,26 @@ for(int i = 0; i < is_innermost.size(); i++ ){
     //Register increment code
     //loop through uninstrumented chords
     for(std::set<MaximumSpanningTree<BasicBlock>::Edge>::iterator it=chords.begin(); it!=chords.end(); ++it){
-     	bool not_in_any_path_instrumentation=true;
-     	if(r_eq_path_instrumentation.find(*it)!=r_eq_path_instrumentation.end()){
-     		not_in_any_path_instrumentation=false;
-     	}
-     	if(count_path_instrumentation.find(*it)!=count_path_instrumentation.end()){
-     		not_in_any_path_instrumentation=false;
-     	}
+      bool not_in_any_path_instrumentation=true;
+      if(r_eq_path_instrumentation.find(*it)!=r_eq_path_instrumentation.end()){
+        not_in_any_path_instrumentation=false;
+      }
+      if(count_path_instrumentation.find(*it)!=count_path_instrumentation.end()){
+        not_in_any_path_instrumentation=false;
+      }
 
-     	if(not_in_any_path_instrumentation){
-     		r_plus_eq_path_instrumentation[*it]=increment[*it];
-     		errs() << "r_plus_eq: " <<it->first->getName() <<" -> "<<it->second->getName() << " " << r_plus_eq_path_instrumentation[*it] << '\n';
-     	}
+      if(not_in_any_path_instrumentation){
+        r_plus_eq_path_instrumentation[*it]=increment[*it];
+      }
     }
 
-
-      //Print edge values
-     errs() << "Edge Values: {" << '\n';
-     for (std::map<std::string,int>::iterator it=ball_larus_edge_values.begin(); it!=ball_larus_edge_values.end(); ++it){
-        errs() << " " << it->first << " => " << it->second << '\n';
-
-      }
-      errs() << "}" << '\n';
-
+      //end of is_innermost[i] if loop - code above will be repeated for each innermost loop
+      //clear global variables
+      ball_larus_edge_values.clear();
+      basic_block_key_map.clear();
+      num_not_visited=0;
+      num_paths.clear();
+      ew_vector.clear();
     }
   }
 
@@ -574,6 +559,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       r_eq_path_instrumentation.clear();
       count_path_instrumentation.clear();
       r_plus_eq_path_instrumentation.clear();
+      ball_larus_edge_values.clear();
 
       return true; 
 }
@@ -611,41 +597,37 @@ for(int i = 0; i < is_innermost.size(); i++ ){
 }
 
 void DFS(int events, BasicBlock* v, MaximumSpanningTree<BasicBlock>::Edge e, std::set<BasicBlock*> innermost_loop, 
-	std::set<MaximumSpanningTree<BasicBlock>::Edge> chords, std::map<MaximumSpanningTree<BasicBlock>::Edge,int> &increment,
-	BasicBlock* innermost_loop_tail, BasicBlock* innermost_loop_header){
+  std::set<MaximumSpanningTree<BasicBlock>::Edge> chords, std::map<MaximumSpanningTree<BasicBlock>::Edge,int> &increment,
+  BasicBlock* innermost_loop_tail, BasicBlock* innermost_loop_header){
 
 //if(debug_dfs<50){
   for(pred_iterator pit =pred_begin(v); pit!=pred_end(v); ++pit){
       MaximumSpanningTree<BasicBlock>::Edge f(*pit,v);
       if(innermost_loop.find(*pit)!=innermost_loop.end() && (*pit)!=innermost_loop_tail && (chords.find(f)==chords.end())){
-      	if((f!=e)){
-	        int Events=0;
-	        for(int i=0; i<ew_vector.size(); i++){
-	          if(ew_vector[i].first==f){
-	            Events=ew_vector[i].second;
-	          }
-	        }
-	        debug_dfs++;
-	        //errs() << "Dir+Events: "<<(Dir(e,f)*events)+Events << " pred: " <<(*pit)->getName() << " f.first: " << f.first->getName() << " f.second " << f.second->getName()<< '\n';
-	        DFS((Dir(e,f)*events)+Events,(*pit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_header);
-  		}
-	   }
+        if((f!=e)){
+          int Events=0;
+          for(unsigned int i=0; i<ew_vector.size(); i++){
+            if(ew_vector[i].first==f){
+              Events=ew_vector[i].second;
+            }
+          }
+          debug_dfs++;
+          DFS((Dir(e,f)*events)+Events,(*pit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_header);
+      }
+     }
   }
 
   for(succ_iterator sit =succ_begin(v); sit!=succ_end(v); ++sit){
       MaximumSpanningTree<BasicBlock>::Edge f(v,*sit);
       if((innermost_loop.find(*sit)!=innermost_loop.end()) && (f!=e) && ((*sit)!=innermost_loop_header) && (chords.find(f)==chords.end())){
-      	//errs() << "first if statement" << '\n';
         int Events=0;
-        for(int i=0; i<ew_vector.size(); i++){
-        //	errs() << "ew vector loop"  << '\n';
+        for(unsigned int i=0; i<ew_vector.size(); i++){
           if(ew_vector[i].first==f){
             Events=ew_vector[i].second;
             break;
           }
         }
         debug_dfs++;
-      // errs() << "Dir+Events: "<<(Dir(e,f)*events)+Events << " succ: " <<(*sit)->getName() << " f.first: " << f.first->getName() << " f.second " << f.second->getName()<< '\n';
 
         DFS((Dir(e,f)*events)+Events,(*sit),f, innermost_loop, chords, increment, innermost_loop_tail, innermost_loop_header);
       }
@@ -658,8 +640,7 @@ void DFS(int events, BasicBlock* v, MaximumSpanningTree<BasicBlock>::Edge e, std
     MaximumSpanningTree<BasicBlock>::Edge f=(*it);
 
     if(v==v1 || v==v2){
-    	increment[f]=increment[f]+(Dir(e,f)*events);
-    	errs() << "Increment[f: " << f.first->getName() <<" -> " <<f.second->getName() <<"]= "<< increment[f] <<  '\n';
+      increment[f]=increment[f]+(Dir(e,f)*events);
 
     }
 
@@ -750,7 +731,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
     std::string printBBVector(std::vector<BasicBlock*> v, std::string label){
       std::string formatted_loop=label+": {";
       std::string comma="";
-      for(int i=0; i<v.size(); i++){
+      for(unsigned int i=0; i<v.size(); i++){
         formatted_loop=(formatted_loop+(comma+(v[i]->getName().str())));
         comma=",";
       }
@@ -920,14 +901,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       loop.pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
           ConstantInt::get(Type::getInt32Ty(*Context), loop.numPaths), "path_cnt_array");
 
-      errs() << "array name: " << loop.pathCntMem->getName() << '\n';
-
       setArrayToZeroes(pathIRB, loop.pathCntMem, loop.numPaths); // clear array
-
-      for (auto &memVar : count_path_instrumentation) {
-        errs() << "in count instr: " << memVar.first.first->getName() << ' ' 
-            << memVar.first.second->getName() << ' ' << memVar.second.increment << '\n';
-      }
 
       for (auto &BB : F) {
         std::string bbname = BB.getName().str();
@@ -986,7 +960,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       Value* zeroAddr = IRB.CreateLoad(zeroVar);  
 
       // store zero in each array element
-      for (int i = 0; i < size; i++) {
+      for(unsigned int i = 0; i < size; i++) {
         // Array index
         Value* indexVal = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), i), zeroAddr);
 
@@ -1069,27 +1043,28 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       // gives the instructions to the new node 
       BasicBlock *newDstNode = currDstNode->splitBasicBlock(currDstNode->begin(), succName);
 
-      errs() << "In insertEdgeNode: " << srcNodeName
-          << ' ' << currDstNode->getName() << ' ' << newDstNode->getName() << '\n';
-
       // Fix predecessors to point to node still, not to edge
       pred_iterator end_pred_iterator = pred_end(currDstNode);
       for (pred_iterator pit = pred_begin(currDstNode);pit != end_pred_iterator; ++pit) {
-      	// Change successors of nodes besides the current node
-      	if ((*pit)->getName().str() != srcNodeName) {
-      	  // Iterate through successors of the predecessor node (only want to change 1 successor)
-      	  TerminatorInst* terminator = (*pit)->getTerminator();
-      	  for (int i = 0; i < terminator->getNumSuccessors(); i++) {
-      	    if (terminator->getSuccessor(i)->getName() == currDstNode->getName()) {
-      	      terminator->setSuccessor(i, newDstNode);
-      	      break;
-      	    }
-      	  }
-      	}
+        // Change successors of nodes besides the current node
+        if ((*pit)->getName().str() != srcNodeName) {
+          // Iterate through successors of the predecessor node (only want to change 1 successor)
+          TerminatorInst* terminator = (*pit)->getTerminator();
+          for(unsigned int i = 0; i < terminator->getNumSuccessors(); i++) {
+            if (terminator->getSuccessor(i)->getName() == currDstNode->getName()) {
+              terminator->setSuccessor(i, newDstNode);
+              break;
+            }
+          }
+        }
       }
     }
 
     void addPathProfilePrints(Function &F, Function *printf_func) {
+      // Don't run if there are no paths to print
+      if (loopDetails.empty())
+        return;
+
       // Get exit block for function F (need for IRBuilder hack)
       BasicBlock* exitBlock = NULL;
       for(auto &B: F) {
@@ -1104,7 +1079,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
 
       // Output profile for each loop's paths
       for (auto &loop : loopDetails) {
-        for (int i = 0; i < loop.numPaths; i++) {
+        for(unsigned int i = 0; i < loop.numPaths; i++) {
           // Super helpful zero variable
           Value* zeroAddr = IRB.CreateLoad(zeroVar);  
 
