@@ -130,7 +130,6 @@ namespace {
 
       // order stays the same because the for loop stays the same. Then just make an array for the largest edge 
       // count. 
-      int bb_tmp = 0;
       int max_num_edges = 0;
       int num_edges = 0;
       // Go through each function
@@ -872,7 +871,6 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
             // Get successor index into Value*
             const char* blockName = sit->getName().str().c_str();
             int64_t blockIdx = std::atoi(blockName + 7); // ignore "bb_edge"
-            Value* srcAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), blockIdx), loadAddr);
 
             // Get array elem ptr edge count into Value*
             Value *edgePtr = getEdgeFreqPtr(IRB, blockIdx);
@@ -960,7 +958,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       Value* zeroAddr = IRB.CreateLoad(zeroVar);  
 
       // store zero in each array element
-      for(unsigned int i = 0; i < size; i++) {
+      for(int i = 0; i < size; i++) {
         // Array index
         Value* indexVal = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), i), zeroAddr);
 
@@ -1079,7 +1077,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
 
       // Output profile for each loop's paths
       for (auto &loop : loopDetails) {
-        for(unsigned int i = 0; i < loop.numPaths; i++) {
+        for(int i = 0; i < loop.numPaths; i++) {
           // Super helpful zero variable
           Value* zeroAddr = IRB.CreateLoad(zeroVar);  
 
