@@ -60,8 +60,6 @@ namespace {
     static char ID;
     LLVMContext *Context;
 
-    GlobalVariable *bbCounter = NULL;
-    GlobalVariable *BasicBlockPrintfFormatStr = NULL;
     Function *printf_func = NULL;
 
     // For edge profiling
@@ -97,13 +95,9 @@ namespace {
     bool doInitialization(Module &M) {
       errs() << "\n---------Starting BasicBlockDemo---------\n";
       Context = &M.getContext();
-      bbCounter = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::InternalLinkage, 
-          ConstantInt::get(Type::getInt32Ty(*Context), 0), "bbCounter");
-      const char *finalPrintString = "BB Count: %d\n";
-      Constant *format_const = ConstantDataArray::getString(*Context, finalPrintString);
-      BasicBlockPrintfFormatStr = new GlobalVariable(M, llvm::ArrayType::get(llvm::IntegerType::get(*Context, 8), 
-          strlen(finalPrintString)+1), true, llvm::GlobalValue::PrivateLinkage, format_const, "BasicBlockPrintfFormatStr");
+      Constant *format_const;
       printf_func = printf_prototype(*Context, &M);
+
       // Edge Profiling Setup
       // edge str 1 and 2
       const char *edgeStr1 = "EDGE PROFILING:\n";
@@ -152,13 +146,13 @@ namespace {
           ConstantInt::get(Type::getInt32Ty(*Context), 0)), "edge_cnt_array");
 
       // zero var and r (same value for now)
-      zeroVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::InternalLinkage, 
+      zeroVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::PrivateLinkage, 
           ConstantInt::get(Type::getInt32Ty(*Context), 0), "zeroVar");
-      rVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::InternalLinkage, 
+      rVar = new GlobalVariable(M, Type::getInt32Ty(*Context), false, GlobalValue::PrivateLinkage, 
           ConstantInt::get(Type::getInt32Ty(*Context), 0), "rVar");
 
       //errs() << "Module: " << M.getName() << "\n";
- 
+
       return true;
     }
  
@@ -666,10 +660,6 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       errs() << "BasicBlock: " << BB.getName() << '\n';
       IRBuilder<> IRB(BB.getFirstInsertionPt()); // Will insert the generated instructions BEFORE the first BB instruction
  
-      Value *loadAddr = IRB.CreateLoad(bbCounter);
-      Value *addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 1), loadAddr);
-      IRB.CreateStore(addAddr, bbCounter);
-
       succ_iterator end = succ_end(&BB);
       for (succ_iterator sit = succ_begin(&BB);sit != end; ++sit){
 
