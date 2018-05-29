@@ -824,9 +824,6 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
           int64_t nodeIdx = std::atoi(nodeName + 7); // ignore "bb_edge"
           Value *edgeCnt = getEdgeFreq(IRB, nodeIdx);
 
-          // Get edge index into Value*
-          Value* edgeIndex = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), nodeIdx), zeroVarVal);
-
           // Get source node index into Value*
           nodeName = BB.getUniquePredecessor()->getName().str().c_str();
           nodeIdx = std::atoi(nodeName + 1); // ignore 'b'
@@ -915,7 +912,12 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       loop.pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
           ConstantInt::get(Type::getInt32Ty(*Context), loop.numPaths), "path_cnt_array");
 
-      //setArrayToZeroes(pathIRB, loop.pathCntMem, loop.numPaths); // clear array
+      setArrayToZeroes(pathIRB, loop.pathCntMem, loop.numPaths); // clear array
+
+      for (auto &memVar : count_path_instrumentation) {
+        errs() << "in count instr: " << memVar.first.first->getName() << ' ' 
+            << memVar.first.second->getName() << '\n';
+      }
 
       for (auto &BB : F) {
         std::string bbname = BB.getName().str();
@@ -929,7 +931,8 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
             IRBuilder<> IRB(sit->begin());
             Value* zeroAddr = IRB.CreateLoad(zeroVar);  
 
-            auto e = MaximumSpanningTree<BasicBlock>::Edge(&BB, *sit);
+            // Remember, the edge node connects two "original" nodes
+            auto e = MaximumSpanningTree<BasicBlock>::Edge(&BB, sit->getTerminator()->getSuccessor(0));
 
             // "r=Inc(e)" or "r=0"
             if (r_eq_path_instrumentation.find(e) != r_eq_path_instrumentation.end()) {
@@ -939,7 +942,9 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
 
             // "count[Inc(e)]++" or "count[r+Inc(e)]++" or "count[r]++"
             if (count_path_instrumentation.find(e) != count_path_instrumentation.end()) {
-              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), count_path_instrumentation[e].increment), zeroAddr);
+              errs() << "IN HERE" << '\n';
+              Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 
+                  count_path_instrumentation[e].increment), zeroAddr);
 
               if (count_path_instrumentation[e].includeR) {
                 Value* rAddr = IRB.CreateLoad(rVar);
@@ -980,7 +985,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
         Value *pathCntPtr = getArrayPtr(IRB, array, indexVal);
 
         // store zeroVar into pointer
-        IRB.CreateStore(zeroVar, pathCntPtr);
+        IRB.CreateStore(zeroAddr, pathCntPtr);
       }
     }
 
@@ -1000,6 +1005,48 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
           }
         }
       }
+
+      fixAllEdgeReferences();
+    }
+
+    void fixAllEdgeReferences() {
+      // Copies of variables with edge references that need fixixing
+      // Using copies to avoid iterator issues when removing old versions
+      std::map<MaximumSpanningTree<BasicBlock>::Edge, double> r_eq_copy;
+      std::map<MaximumSpanningTree<BasicBlock>::Edge, double> r_plus_eq_copy;
+      std::map<MaximumSpanningTree<BasicBlock>::Edge, struct MemCountContainer> count_copy;
+
+      for (auto &rSet : r_eq_path_instrumentation) {
+        auto correctE = MaximumSpanningTree<BasicBlock>::Edge(
+            rSet.first.first->getTerminator()->getSuccessor(0),
+            rSet.first.second->getTerminator()->getSuccessor(0));
+
+        // Swap old edge with corrected edge
+        r_eq_copy[correctE] = rSet.second;
+      }
+
+      for (auto &memVar : count_path_instrumentation) {
+        auto correctE = MaximumSpanningTree<BasicBlock>::Edge(
+            memVar.first.first->getTerminator()->getSuccessor(0),
+            memVar.first.second->getTerminator()->getSuccessor(0));
+
+        // Swap old edge with corrected edge
+        count_copy[correctE] = memVar.second;
+      }
+
+      for (auto &rPlusSet : r_plus_eq_path_instrumentation) {
+        auto correctE = MaximumSpanningTree<BasicBlock>::Edge(
+            rPlusSet.first.first->getTerminator()->getSuccessor(0),
+            rPlusSet.first.second->getTerminator()->getSuccessor(0));
+
+        // Swap old edge with corrected edge
+        r_plus_eq_copy[correctE] = rPlusSet.second;
+      }
+
+      // replace originals with fixed copies
+      r_eq_path_instrumentation = r_eq_copy;
+      count_path_instrumentation = count_copy;
+      r_plus_eq_path_instrumentation = r_plus_eq_copy;
     }
 
     void insertEdgeNode(std::string srcNodeName, BasicBlock* currDstNode) {
@@ -1012,6 +1059,9 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       // The newly split node becomes the "child" node because split
       // gives the instructions to the new node 
       BasicBlock *newDstNode = currDstNode->splitBasicBlock(currDstNode->begin(), succName);
+
+      errs() << "In insertEdgeNode: " << srcNodeName
+          << ' ' << currDstNode->getName() << ' ' << newDstNode->getName() << '\n';
 
       // Fix predecessors to point to node still, not to edge
       pred_iterator end_pred_iterator = pred_end(currDstNode);
