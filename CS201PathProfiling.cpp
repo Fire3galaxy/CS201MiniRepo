@@ -559,6 +559,7 @@ for(unsigned int i = 0; i < is_innermost.size(); i++ ){
       count_path_instrumentation.clear();
       r_plus_eq_path_instrumentation.clear();
       ball_larus_edge_values.clear();
+      loop_header_tail.clear();
 
       return true; 
 }
@@ -856,6 +857,17 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
     }
 
     void insertEdgeInstrumentation(Function &F) {
+      // Count # of edges in function
+      int num_edges = 0;
+      for (auto& bb : F) {
+        succ_iterator end = succ_end(&bb);
+        for (succ_iterator sit = succ_begin(&bb);sit != end; ++sit) {
+          num_edges++;  
+        }
+      }
+      IRBuilder<> startBlockIRB(F.getEntryBlock().begin());
+      setArrayToZeroes(startBlockIRB, edge_cnt_array, num_edges); // clear array
+
       for (auto &BB : F) {
         std::string bbname = BB.getName().str();
 
@@ -953,7 +965,7 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       }
     }
 
-    void setArrayToZeroes(IRBuilder<> IRB, AllocaInst *array, const int size) {
+    void setArrayToZeroes(IRBuilder<> IRB, Value *array, const int size) {
       // zero variable to store in array locations
       Value* zeroAddr = IRB.CreateLoad(zeroVar);  
 
