@@ -48,9 +48,10 @@ namespace {
   	};
 
   	struct LoopDetails {
-      AllocaInst *pathCntMem; // Pointer to count array
-      BasicBlock *loop_header;  // Entry/head node of loop
-  	  int numPaths;           // Number of paths from head to tail
+      AllocaInst *pathCntMem;       // Pointer to count array
+      std::set<std::string> loopBlocks;  // blocks in loop
+      BasicBlock *loop_header;      // Entry/head node of loop
+  	  int numPaths;                 // Number of paths from head to tail
   	  LoopDetails() : pathCntMem(NULL), loop_header(NULL), numPaths(0) {}
   	  // No constructor for allocaInst (this is set after processing function)
   	  LoopDetails(BasicBlock* b, int n) : pathCntMem(NULL), loop_header(b), numPaths(n) {}
@@ -284,6 +285,9 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       }
     }*/
    // MaximumSpanningTree<BasicBlock>::EdgeWeights ew_vector;
+      // Path profiling variables
+      LoopDetails loopData;
+      loopData.loop_header = innermost_loop_header;
       int num_loop_exits=0;
       std::map<BasicBlock*, int> loop_exit_edges;
       for(int i=0; i<reversed_results.size(); i++){
@@ -300,7 +304,7 @@ for(int i = 0; i < is_innermost.size(); i++ ){
         
         std::string v_name=((reversed_results[i])->getName()).str();
         //keep a count of how many loop exits there are per vertex
-        
+
         if(num_successors<1){
           num_paths[v_name]=1;
         }else{
@@ -316,6 +320,10 @@ for(int i = 0; i < is_innermost.size(); i++ ){
                   edge_val=num_paths[v_name];
                   ball_larus_edge_values[edge_name]=edge_val;
                   num_paths[v_name]=(num_paths[v_name]+num_paths[w_name]);
+
+                  // Save loop contents in loop details 
+                  loopData.loopBlocks.insert(v_name);
+                  loopData.loopBlocks.insert(w_name);
                 }
               }else{
             	  num_loop_exits++;
@@ -331,8 +339,8 @@ for(int i = 0; i < is_innermost.size(); i++ ){
       }
 
       // Path profiling details
-      loopDetails.push_back(LoopDetails(innermost_loop_header, 
-          num_paths[innermost_loop_header->getName().str()]));
+      loopData.numPaths = num_paths[innermost_loop_header->getName().str()];
+      loopDetails.push_back(loopData);
 
 	std::reverse(sorted_results2.begin(),sorted_results2.end());
 	errs() << printBBVector(sorted_results2,"Topological Sort") << '\n';
@@ -912,18 +920,20 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
       loop.pathCntMem = pathIRB.CreateAlloca(pathCntArrayType, 
           ConstantInt::get(Type::getInt32Ty(*Context), loop.numPaths), "path_cnt_array");
 
+      errs() << "array name: " << loop.pathCntMem->getName() << '\n';
+
       setArrayToZeroes(pathIRB, loop.pathCntMem, loop.numPaths); // clear array
 
       for (auto &memVar : count_path_instrumentation) {
         errs() << "in count instr: " << memVar.first.first->getName() << ' ' 
-            << memVar.first.second->getName() << '\n';
+            << memVar.first.second->getName() << ' ' << memVar.second.increment << '\n';
       }
 
       for (auto &BB : F) {
         std::string bbname = BB.getName().str();
 
-        // Only look at non-edge nodes
-        if (bbname.size() < 7 || bbname.substr(0,7) != "bb_edge") {
+        // Only look at non-edge nodes in the loop
+        if (loop.loopBlocks.find(bbname) != loop.loopBlocks.end()) {
           // Iterate through connected edge nodes (always children of regular nodes)
           // Inserts instrumentation node for each edge
           succ_iterator end = succ_end(&BB);
@@ -942,7 +952,6 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
 
             // "count[Inc(e)]++" or "count[r+Inc(e)]++" or "count[r]++"
             if (count_path_instrumentation.find(e) != count_path_instrumentation.end()) {
-              errs() << "IN HERE" << '\n';
               Value* addAddr = IRB.CreateAdd(ConstantInt::get(Type::getInt32Ty(*Context), 
                   count_path_instrumentation[e].increment), zeroAddr);
 
@@ -1112,7 +1121,6 @@ int Dir(MaximumSpanningTree<BasicBlock>::Edge e, MaximumSpanningTree<BasicBlock>
           // Get path counter
           Value *pathCntPtr = getArrayPtr(IRB, loop.pathCntMem, pathIdxVal);
           Value *pathCntVar = IRB.CreateLoad(pathCntPtr);  
-          errs() << "array name: " << loop.pathCntMem->getName() << '\n';
 
           addFinalPrintf3(*exitBlock, Context, blockIdxVal, pathIdxVal, 
               pathCntVar, pathFormatStr2, printf_func);
